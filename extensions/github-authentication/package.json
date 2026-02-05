@@ -19,7 +19,8 @@
   ],
   "enabledApiProposals": [
     "authIssuers",
-    "authProviderSpecific"
+    "authProviderSpecific",
+    "envIsAppPortable"
   ],
   "activationEvents": [],
   "capabilities": {
@@ -62,6 +63,12 @@
             "default": true,
             "scope": "application",
             "markdownDescription": "%config.github-authentication.useElectronFetch.description%"
+          },
+          "github-authentication.preferDeviceCodeFlow": {
+            "type": "boolean",
+            "default": false,
+            "scope": "application",
+            "markdownDescription": "%config.github-authentication.preferDeviceCodeFlow.description%"
           }
         }
       }

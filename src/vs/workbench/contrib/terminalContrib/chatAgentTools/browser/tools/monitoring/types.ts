@@ -7,6 +7,7 @@ import type { Task } from '../../../../../tasks/common/taskService.js';
 import type { ITerminalInstance } from '../../../../../terminal/browser/terminal.js';
 import type { ILinkLocation } from '../../taskHelpers.js';
 import type { IMarker as XtermMarker } from '@xterm/xterm';
+import type { URI } from '../../../../../../../base/common/uri.js';
 
 export interface IConfirmationPrompt {
 	prompt: string;
@@ -19,8 +20,9 @@ export interface IExecution {
 	getOutput: (marker?: XtermMarker) => string;
 	isActive?: () => Promise<boolean>;
 	task?: Task | Pick<Task, 'configurationProperties'>;
-	instance: Pick<ITerminalInstance, 'sendText' | 'instanceId' | 'onDidInputData' | 'onData' | 'focus' | 'registerMarker'>;
-	sessionId: string | undefined;
+	dependencyTasks?: Task[];
+	instance: Pick<ITerminalInstance, 'sendText' | 'instanceId' | 'onDidInputData' | 'onDisposed' | 'onData' | 'focus' | 'registerMarker'>;
+	sessionResource: URI | undefined;
 }
 
 export interface IPollingResult {
@@ -52,6 +54,6 @@ export const enum PollingConsts {
 	MinPollingDuration = 500,
 	FirstPollingMaxDuration = 20000, // 20 seconds
 	ExtendedPollingMaxDuration = 120000, // 2 minutes
-	MaxPollingIntervalDuration = 2000, // 2 seconds
+	MaxPollingIntervalDuration = 10000, // 10 seconds - grows via exponential backoff
 	MaxRecursionCount = 5
 }

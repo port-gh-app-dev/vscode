@@ -5,7 +5,18 @@
 
 import { isWeb, isWindows } from '../../../../base/common/platform.js';
 import { localize } from '../../../../nls.js';
-import { ExtensionToggleData } from '../common/preferences.js';
+import { ISetting, ISettingsGroup } from '../../../services/preferences/common/preferences.js';
+
+export interface ITOCFilter {
+	include?: {
+		keyPatterns?: string[];
+		tags?: string[];
+	};
+	exclude?: {
+		keyPatterns?: string[];
+		tags?: string[];
+	};
+}
 
 export interface ITOCEntry<T> {
 	id: string;
@@ -16,13 +27,15 @@ export interface ITOCEntry<T> {
 	hide?: boolean;
 }
 
-const defaultCommonlyUsedSettings: string[] = [
+const COMMONLY_USED_SETTINGS: readonly string[] = [
 	'editor.fontSize',
 	'editor.formatOnSave',
 	'files.autoSave',
+	'GitHub.copilot-chat.manageExtension',
 	'editor.defaultFormatter',
 	'editor.fontFamily',
 	'editor.wordWrap',
+	'chat.agent.maxRequests',
 	'files.exclude',
 	'workbench.colorTheme',
 	'editor.tabSize',
@@ -30,11 +43,26 @@ const defaultCommonlyUsedSettings: string[] = [
 	'editor.formatOnPaste'
 ];
 
-export function getCommonlyUsedData(toggleData: ExtensionToggleData | undefined): ITOCEntry<string> {
+export function getCommonlyUsedData(settingGroups: ISettingsGroup[]): ITOCEntry<ISetting> {
+	const allSettings = new Map<string, ISetting>();
+	for (const group of settingGroups) {
+		for (const section of group.sections) {
+			for (const s of section.settings) {
+				allSettings.set(s.key, s);
+			}
+		}
+	}
+	const settings: ISetting[] = [];
+	for (const id of COMMONLY_USED_SETTINGS) {
+		const setting = allSettings.get(id);
+		if (setting) {
+			settings.push(setting);
+		}
+	}
 	return {
 		id: 'commonlyUsed',
 		label: localize('commonlyUsed', "Commonly Used"),
-		settings: toggleData?.commonlyUsed ?? defaultCommonlyUsedSettings
+		settings
 	};
 }
 

@@ -192,11 +192,9 @@ export class LabelService extends Disposable implements ILabelService {
 					continue;
 				}
 
-				if (
-					match(formatter.authority.toLowerCase(), resource.authority.toLowerCase()) &&
+				if (match(formatter.authority, resource.authority, { ignoreCase: true }) &&
 					(
-						!bestResult ||
-						!bestResult.authority ||
+						!bestResult?.authority ||
 						formatter.authority.length > bestResult.authority.length ||
 						((formatter.authority.length === bestResult.authority.length) && formatter.priority)
 					)
@@ -310,6 +308,10 @@ export class LabelService extends Disposable implements ILabelService {
 
 	getWorkspaceLabel(workspace: IWorkspace | IWorkspaceIdentifier | ISingleFolderWorkspaceIdentifier | URI, options?: { verbose: Verbosity }): string {
 		if (isWorkspace(workspace)) {
+			if (workspace.isAgentSessionsWorkspace) {
+				return localize('agentSessionsWorkspace', "Agent Sessions");
+			}
+
 			const identifier = toWorkspaceIdentifier(workspace);
 			if (isSingleFolderWorkspaceIdentifier(identifier) || isWorkspaceIdentifier(identifier)) {
 				return this.getWorkspaceLabel(identifier, options);

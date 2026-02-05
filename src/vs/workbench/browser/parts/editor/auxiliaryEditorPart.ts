@@ -270,7 +270,7 @@ export class AuxiliaryEditorPart {
 					if (typeof canMoveVeto === 'string') {
 						group.openEditor(editor);
 						event.veto(canMoveVeto);
-						break;
+						return;
 					}
 				}
 			}
@@ -303,8 +303,14 @@ export class AuxiliaryEditorPart {
 			}
 		}));
 
-		disposables.add(editorPart.onDidAddGroup(() => {
+		disposables.add(editorPart.onDidAddGroup(group => {
 			updateCompact(false); // leave compact mode when a group is added
+
+			disposables.add(group.onDidActiveEditorChange(() => {
+				if (group.count > 1) {
+					updateCompact(false); // leave compact mode when more than 1 editor is active
+				}
+			}));
 		}));
 
 		disposables.add(editorPart.activeGroup.onDidActiveEditorChange(() => {
@@ -433,6 +439,9 @@ class AuxiliaryEditorPartImpl extends EditorPart implements IAuxiliaryEditorPart
 
 			// Then merge remaining to main part
 			result = this.mergeGroupsToMainPart();
+			if (!result) {
+				return false; // Do not close when editors could not be merged back
+			}
 		}
 
 		this._onWillClose.fire();

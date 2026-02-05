@@ -53,7 +53,6 @@ export interface ISettingsGroup {
 }
 
 export interface ISettingsSection {
-	titleRange?: IRange;
 	title?: string;
 	settings: ISetting[];
 }
@@ -79,6 +78,7 @@ export interface ISetting {
 	objectProperties?: IJSONSchemaMap;
 	objectPatternProperties?: IJSONSchemaMap;
 	objectAdditionalProperties?: boolean | IJSONSchema;
+	propertyNames?: IJSONSchema;
 	enum?: string[];
 	enumDescriptions?: string[];
 	enumDescriptionsAreMarkdown?: boolean;
@@ -222,6 +222,7 @@ export interface ISettingsEditorOptions extends IEditorOptions {
 export interface IOpenSettingsOptions extends ISettingsEditorOptions {
 	jsonEditor?: boolean;
 	openToSide?: boolean;
+	openInModal?: boolean;
 	groupId?: number;
 }
 
@@ -245,6 +246,7 @@ export interface IKeybindingsEditorOptions extends IEditorOptions {
 
 export interface IOpenKeybindingsEditorOptions extends IKeybindingsEditorOptions {
 	groupId?: number;
+	openInModal?: boolean;
 }
 
 export const IPreferencesService = createDecorator<IPreferencesService>('preferencesService');
@@ -349,5 +351,6 @@ export interface IDefineKeybindingEditorContribution extends IEditorContribution
 export const FOLDER_SETTINGS_PATH = '.vscode/settings.json';
 export const DEFAULT_SETTINGS_EDITOR_SETTING = 'workbench.settings.openDefaultSettings';
 export const USE_SPLIT_JSON_SETTING = 'workbench.settings.useSplitJSON';
+export const ALWAYS_SHOW_ADVANCED_SETTINGS_SETTING = 'workbench.settings.alwaysShowAdvancedSettings';
 
 export const SETTINGS_AUTHORITY = 'settings';

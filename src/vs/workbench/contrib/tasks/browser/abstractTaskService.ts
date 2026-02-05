@@ -8,7 +8,7 @@ import { IStringDictionary } from '../../../../base/common/collections.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import * as glob from '../../../../base/common/glob.js';
 import * as json from '../../../../base/common/json.js';
-import { Disposable, DisposableStore, dispose, IDisposable, IReference, MutableDisposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, dispose, IDisposable, IReference, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { LRUCache, Touch } from '../../../../base/common/map.js';
 import * as Objects from '../../../../base/common/objects.js';
 import { ValidationState, ValidationStatus } from '../../../../base/common/parsers.js';
@@ -86,8 +86,8 @@ import { IPreferencesService } from '../../../services/preferences/common/prefer
 import { IRemoteAgentService } from '../../../services/remote/common/remoteAgentService.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
 import { CHAT_OPEN_ACTION_ID } from '../../chat/browser/actions/chatActions.js';
-import { IChatAgentService } from '../../chat/common/chatAgents.js';
-import { IChatService } from '../../chat/common/chatService.js';
+import { IChatAgentService } from '../../chat/common/participants/chatAgents.js';
+import { IChatService } from '../../chat/common/chatService/chatService.js';
 import { configureTaskIcon, isWorkspaceFolder, ITaskQuickPickEntry, QUICKOPEN_DETAIL_CONFIG, QUICKOPEN_SKIP_CONFIG, TaskQuickPick } from './taskQuickPick.js';
 import { IHostService } from '../../../services/host/browser/host.js';
 import * as dom from '../../../../base/browser/dom.js';
@@ -257,7 +257,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 
 	private _activatedTaskProviders: Set<string> = new Set();
 
-	private readonly notification = this._register(new MutableDisposable<DisposableStore>());
+	private readonly toast = this._register(new MutableDisposable<IDisposable>());
 
 	constructor(
 		@IConfigurationService private readonly _configurationService: IConfigurationService,
@@ -530,20 +530,12 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 			? nls.localize('task.longRunningTaskCompletedWithLabel', 'Task "{0}" finished in {1}.', taskLabel, durationText)
 			: nls.localize('task.longRunningTaskCompleted', 'Task finished in {0}.', durationText);
 		this._hostService.focus(targetWindow, { mode: FocusMode.Notify });
-		const notification = await dom.triggerNotification(message);
-		if (notification) {
-			const disposables = this.notification.value = new DisposableStore();
-			disposables.add(notification);
-
-			disposables.add(Event.once(notification.onClick)(() => {
-				this._hostService.focus(targetWindow, { mode: FocusMode.Force });
-			}));
-
-			disposables.add(this._hostService.onDidChangeFocus(focus => {
-				if (focus) {
-					disposables.dispose();
-				}
-			}));
+		const cts = new CancellationTokenSource();
+		this.toast.value = toDisposable(() => cts.dispose(true));
+		const { clicked } = await this._hostService.showToast({ title: message }, cts.token);
+		this.toast.clear();
+		if (clicked) {
+			this._hostService.focus(targetWindow, { mode: FocusMode.Force });
 		}
 	}
 
@@ -768,7 +760,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 		const result = await raceTimeout(
 			Promise.all(this._getActivationEvents(type).map(activationEvent => this._extensionService.activateByEvent(activationEvent))),
 			5000,
-			() => console.warn('Timed out activating extensions for task providers')
+			() => this._logService.warn('Timed out activating extensions for task providers')
 		);
 		if (result) {
 			this._activatedTaskProviders.add(type ?? 'all');
@@ -926,7 +918,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 		const tasks = await this.getWorkspaceTasks();
 		for (const [, workspaceTasks] of tasks) {
 			if (workspaceTasks.configurations) {
-				for (const taskName in workspaceTasks.configurations.byIdentifier) {
+				for (const taskName of Object.keys(workspaceTasks.configurations.byIdentifier)) {
 					const task = workspaceTasks.configurations.byIdentifier[taskName];
 					if (predicate(task, workspaceTasks.workspaceFolder)) {
 						result.push(task);
@@ -1264,7 +1256,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 						readTasksMap.set(taskKey, task);
 					}
 				});
-				for (const configuration in customized) {
+				for (const configuration of Object.keys(customized)) {
 					const taskKey = customized[configuration].getKey();
 					if (taskKey) {
 						readTasksMap.set(taskKey, customized[configuration]);
@@ -1286,16 +1278,14 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 	}
 
 	public removeRecentlyUsedTask(taskRecentlyUsedKey: string) {
-		if (this._getTasksFromStorage('historical').has(taskRecentlyUsedKey)) {
-			this._getTasksFromStorage('historical').delete(taskRecentlyUsedKey);
+		if (this._getTasksFromStorage('historical').delete(taskRecentlyUsedKey)) {
 			this._saveRecentlyUsedTasks();
 		}
 	}
 
 	public removePersistentTask(key: string) {
 		this._log(nls.localize('taskService.removePersistentTask', 'Removing persistent task {0}', key), true);
-		if (this._getTasksFromStorage('persistent').has(key)) {
-			this._getTasksFromStorage('persistent').delete(key);
+		if (this._getTasksFromStorage('persistent').delete(key)) {
 			this._savePersistentTasks();
 		}
 	}
@@ -1318,7 +1308,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 					version: '2.0.0',
 					tasks: [customizations]
 				}, TaskRunSource.System, custom, customized, TaskConfig.TaskConfigSource.TasksJson, true);
-				for (const configuration in customized) {
+				for (const configuration of Object.keys(customized)) {
 					key = customized[configuration].getKey()!;
 				}
 			}
@@ -1361,7 +1351,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 					version: '2.0.0',
 					tasks: [customizations]
 				}, TaskRunSource.System, custom, customized, TaskConfig.TaskConfigSource.TasksJson, true);
-				for (const configuration in customized) {
+				for (const configuration of Object.keys(customized)) {
 					key = customized[configuration].getKey()!;
 				}
 			}
@@ -2172,22 +2162,34 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 		if (!this._taskSystem) {
 			return;
 		}
-		const response = await this._taskSystem.terminate(task);
-		if (response.success) {
-			try {
-				// Before restarting, check if the task still exists and get updated version
-				const updatedTask = await this._findUpdatedTask(task);
-				if (updatedTask) {
-					await this.run(updatedTask);
-				} else {
+
+		// Check if the task is currently running
+		const isTaskRunning = await this.getActiveTasks().then(tasks => tasks.some(t => t.getMapKey() === task.getMapKey()));
+
+		if (isTaskRunning) {
+			// Task is running, terminate it first
+			const response = await this._taskSystem.terminate(task);
+			if (!response.success) {
+				this._notificationService.warn(nls.localize('TaskSystem.restartFailed', 'Failed to terminate and restart task {0}', Types.isString(task) ? task : task.configurationProperties.name));
+				return;
+			}
+		}
+
+		// Task is not running or was successfully terminated, now run it
+		try {
+			// Before restarting, check if the task still exists and get updated version
+			const updatedTask = await this._findUpdatedTask(task);
+			if (updatedTask) {
+				await this.run(updatedTask);
+			} else {
+				const success = await this.run(task);
+				if (!success || (typeof success.exitCode === 'number' && success.exitCode !== 0)) {
 					// Task no longer exists, show warning
 					this._notificationService.warn(nls.localize('TaskSystem.taskNoLongerExists', 'Task {0} no longer exists or has been modified. Cannot restart.', task.configurationProperties.name));
 				}
-			} catch {
-				// eat the error, we don't care about it here
 			}
-		} else {
-			this._notificationService.warn(nls.localize('TaskSystem.restartFailed', 'Failed to terminate and restart task {0}', Types.isString(task) ? task : task.configurationProperties.name));
+		} catch {
+			// eat the error, we don't care about it here
 		}
 	}
 
@@ -2275,6 +2277,17 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 				} else {
 					return undefined;
 				}
+			},
+			async (taskKey: string) => {
+				// Look up task by its map key across all workspace tasks
+				const taskMap = await this._getGroupedTasks();
+				const allTasks = taskMap.all();
+				for (const task of allTasks) {
+					if (task.getMapKey() === taskKey) {
+						return task;
+					}
+				}
+				return undefined;
 			}
 		);
 	}
@@ -2571,7 +2584,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 		return folder;
 	}
 
-	getTerminalsForTasks(task: (Task | Task[])): URI[] | undefined {
+	getTerminalsForTasks(task: Types.SingleOrMany<Task>): URI[] | undefined {
 		return this._taskSystem?.getTerminalsForTasks(task);
 	}
 
@@ -2643,7 +2656,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 			}
 		}
 		if (!this._jsonTasksSupported && (parseResult.custom.length > 0)) {
-			console.warn('Custom workspace tasks are not supported.');
+			this._logService.warn('Custom workspace tasks are not supported.');
 		}
 		return { workspaceFolder, set: { tasks: this._jsonTasksSupported ? parseResult.custom : [] }, configurations: customizedTasks, hasErrors };
 	}
@@ -2746,7 +2759,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 			}
 		}
 		if (!this._jsonTasksSupported && (parseResult.custom.length > 0)) {
-			console.warn('Custom workspace tasks are not supported.');
+			this._logService.warn('Custom workspace tasks are not supported.');
 		} else {
 			for (const task of parseResult.custom) {
 				custom.push(task);
@@ -2997,7 +3010,12 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 		return entries;
 	}
 	private async _showTwoLevelQuickPick(placeHolder: string, defaultEntry?: ITaskQuickPickEntry, type?: string, name?: string) {
-		return this._instantiationService.createInstance(TaskQuickPick).show(placeHolder, defaultEntry, type, name);
+		const taskQuickPick = this._instantiationService.createInstance(TaskQuickPick);
+		try {
+			return await taskQuickPick.show(placeHolder, defaultEntry, type, name);
+		} finally {
+			taskQuickPick.dispose();
+		}
 	}
 
 	private async _showQuickPick(tasks: Promise<Task[]> | Task[], placeHolder: string, defaultEntry?: ITaskQuickPickEntry, group: boolean = false, sort: boolean = false, selectedEntry?: ITaskQuickPickEntry, additionalEntries?: ITaskQuickPickEntry[], name?: string): Promise<ITaskQuickPickEntry | undefined | null> {
@@ -3209,8 +3227,8 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 	}
 
 
-	rerun(terminalInstanceId: number): void {
-		const task = this._taskSystem?.getTaskForTerminal(terminalInstanceId);
+	async rerun(terminalInstanceId: number): Promise<void> {
+		const task = await this._taskSystem?.getTaskForTerminal(terminalInstanceId);
 		if (task) {
 			this._restart(task);
 		} else {
@@ -3377,7 +3395,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 						const globGroupTasks = await this._findWorkspaceTasks((task) => {
 							const currentTaskGroup = task.configurationProperties.group;
 							if (currentTaskGroup && typeof currentTaskGroup !== 'string' && typeof currentTaskGroup.isDefault === 'string') {
-								return (currentTaskGroup._id === taskGroupId && glob.match(currentTaskGroup.isDefault, relativePath));
+								return (currentTaskGroup._id === taskGroupId && glob.match(currentTaskGroup.isDefault, relativePath, { ignoreCase: true }));
 							}
 
 							globTasksDetected = false;
@@ -3798,7 +3816,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 									entry = <TaskQuickPickEntryType>task;
 								}
 							}
-							const task: Task | undefined | null = entry && 'task' in entry ? entry.task : undefined;
+							const task: Task | undefined | null = entry && Object.hasOwn(entry, 'task') ? (entry as IQuickPickItem & { task: Task }).task : undefined;
 							if ((task === undefined) || (task === null)) {
 								return;
 							}
@@ -3817,7 +3835,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 						placeHolder: nls.localize('TaskService.pickDefaultBuildTask', 'Select the task to be used as the default build task')
 					}).
 						then((entry) => {
-							const task: Task | undefined | null = entry && 'task' in entry ? entry.task : undefined;
+							const task: Task | undefined | null = entry && Object.hasOwn(entry, 'task') ? (entry as IQuickPickItem & { task: Task }).task : undefined;
 							if ((task === undefined) || (task === null)) {
 								return;
 							}
@@ -3867,7 +3885,7 @@ export abstract class AbstractTaskService extends Disposable implements ITaskSer
 				this._showIgnoredFoldersMessage().then(() => {
 					this._showQuickPick(tasks,
 						nls.localize('TaskService.pickDefaultTestTask', 'Select the task to be used as the default test task'), undefined, true, false, selectedEntry).then((entry) => {
-							const task: Task | undefined | null = entry ? entry.task : undefined;
+							const task: Task | undefined | null = entry && Object.hasOwn(entry, 'task') ? entry.task : undefined;
 							if (!task) {
 								return;
 							}

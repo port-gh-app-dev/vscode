@@ -448,7 +448,11 @@ export class WatchingProblemCollector extends AbstractProblemCollector implement
 				false,
 				true
 			)(async (markerEvent: readonly URI[]) => {
-				if (!markerEvent || !markerEvent.includes(modelEvent.uri) || (this.markerService.read({ resource: modelEvent.uri }).length !== 0)) {
+				if (markerEvent.length === 0) {
+					return;
+				}
+				const modelEventUriStr = modelEvent.uri.toString();
+				if ((!markerEvent.some(uri => uri.toString() === modelEventUriStr)) || (this.markerService.read({ resource: modelEvent.uri }).length !== 0)) {
 					return;
 				}
 				const oldLines = Array.from(this.lines);
@@ -546,8 +550,7 @@ export class WatchingProblemCollector extends AbstractProblemCollector implement
 				} else {
 					this._onDidRequestInvalidateLastMarker.fire();
 				}
-				if (this._activeBackgroundMatchers.has(background.key)) {
-					this._activeBackgroundMatchers.delete(background.key);
+				if (this._activeBackgroundMatchers.delete(background.key)) {
 					this.resetCurrentResource();
 					this._onDidStateChange.fire(IProblemCollectorEvent.create(ProblemCollectorEventKind.BackgroundProcessingEnds));
 					result = true;
